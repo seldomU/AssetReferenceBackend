@@ -25,7 +25,6 @@ namespace RelationsInspector.Backend.AssetReferenceInspector
 		
 		public override IEnumerable<SceneObjectNode> Init(IEnumerable<object> targets, RelationsInspectorAPI api)
 		{
-			this.api = api;
 			if (targets == null || !targets.Any())
 				yield break;
 
