@@ -1,117 +1,102 @@
 using UnityEngine;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using System.Linq;
+using RelationsInspector.Extensions;
 
-
-namespace RelationsInspector.Backend.AssetReferenceInspector
+namespace RelationsInspector.Backend.AssetDependency
 {
-	using ObjGraph = Dictionary<Object, HashSet<Object>>;
-	using ObjNodeGraph = Dictionary<SceneObjectNode, HashSet<SceneObjectNode>>;
-	
-	public static class ObjectDependencyUtil
+    using ObjMap = Dictionary<Object, HashSet<Object>>;
+    using ObjNodeGraph = Dictionary<ObjectNode, HashSet<ObjectNode>>;
+
+    public static class ObjectDependencyUtil
 	{
 		public static ObjNodeGraph GetReferenceGraph(string sceneFilePath, HashSet<Object> targets)
 		{
 			// get the scene's objects
-			var sceneObjects = UnityEditorInternal.InternalEditorUtility.LoadSerializedFileAndForget(sceneFilePath);
-
-			// get the scene gameObjects
-			var sceneGOs = sceneObjects.Select(obj => obj as GameObject).Where(go => go != null);
+			var sceneObjects = UnityEditorInternal
+                .InternalEditorUtility
+                .LoadSerializedFileAndForget(sceneFilePath)
+                .ToHashSet();
 
 			// get the root gameObjects
-			var rootGOs = sceneGOs.Where(go => go.transform.parent == null);
+			var rootGOs = sceneObjects
+                .OfType<GameObject>()
+                .Where(go => go.transform.parent == null);
 
 			// build the Object graph
-			var objGraph = new ObjGraph();
-			foreach (var rootGO in rootGOs)
-				AddToReferenceGraph(rootGO, null, objGraph, targets);
+			var objGraph = new ObjMap();
+            var targetArray = targets.ToArray();
+            foreach ( var rootGO in rootGOs )
+            {
+                var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( rootGO, targetArray );
+                objGraph = ObjectGraphUtil.MergeGraphs( objGraph, rootGOgraph );
+            }
 
 			// convert it to a SceneObjectNode graph, so we can destroy the objects
 			string fileName = System.IO.Path.GetFileName(sceneFilePath);
-			var nodeGraph = ObjectGraphToObjectNodeGraph(objGraph, obj => GetSceneObjectNodeName(obj, targets, fileName));
+			var nodeGraph = ObjectGraphToObjectNodeGraph(objGraph, obj => GetSceneObjectNode( obj, targets, sceneObjects, sceneFilePath ) );
 
-			// destroy the Objects
-			for (int i = 0; i < sceneObjects.Length; i++)
-				Object.DestroyImmediate(sceneObjects[i]);
+            // destroy the scene Objects
+            var sceneObjArray = sceneObjects.ToArray();
+			for (int i = 0; i < sceneObjArray.Length; i++)
+				Object.DestroyImmediate(sceneObjArray[i]);
 
 			return nodeGraph;
 		}
 
-
-		// adds go and its children to the reference graph
-		// expects none of them to already be vertices
-		static void AddToReferenceGraph(GameObject go, GameObject parentGo, ObjGraph graph, IEnumerable<Object> targets)
+        // turn object graph into VisualNode graph (mapping obj -> name)
+        static ObjNodeGraph ObjectGraphToObjectNodeGraph(ObjMap objGraph, System.Func<Object, ObjectNode> getNode)
 		{
-			// go may already be in the graph (a prefab can be referenced by more than one scene object)
-			if (graph.ContainsKey(go))
-			{
-				if (parentGo != null)
-				{
-					graph[parentGo].ExceptWith(graph[go]);
-					graph[parentGo].Add(go);
-				}
-				return;
-			}
+            var referencedObjects = objGraph.Values.SelectMany( o => o ).ToHashSet();
 
-			// find all targets referenced by go
-			var referencedObjects = EditorUtility.CollectDependencies( new Object[] { go } );
-			var referencedTargets = referencedObjects.Intersect( targets );
-
-			// only add go to the graph if it references any targets
-			if (!referencedTargets.Any())
-				return;
-
-			graph[go] = new HashSet<Object>(referencedTargets);
-
-			// remove the references from parent that it shares with go. 
-			// they might both reference the same target, but we have no way of checking that.
-			if (parentGo != null)
-			{
-				graph[parentGo].ExceptWith(graph[go]);
-				graph[parentGo].Add(go);
-			}
-
-			// don't add intermediate nodes after a prefab
-			if (IsPrefab(go))
-				return;
-
-			// if it's a prefab instance, add the prefab object
-			var prefabParent = PrefabUtility.GetPrefabParent(go) as GameObject;
-			if (prefabParent != null)
-			{
-				AddToReferenceGraph(prefabParent, go, graph, targets);
-				return;
-			}
-
-			foreach (Transform child in go.transform)
-				AddToReferenceGraph(child.gameObject, go, graph, targets);
-		}
-
-		// turn object graph into VisualNode graph (mapping obj -> name)
-		static ObjNodeGraph ObjectGraphToObjectNodeGraph(ObjGraph objGraph, System.Func<Object, string> getObjectName)
-		{
-			// get all graph objects
-			var allObjs = new HashSet<Object>(objGraph.Keys).Union(objGraph.Values.SelectMany(set => set));
+            // get all graph objects
+            var allObjs = objGraph.Keys.Concat( referencedObjects ).ToHashSet();
 
 			// map them to VisualNodes
-			var objToNode = allObjs.ToDictionary(obj => obj, obj => new SceneObjectNode(getObjectName(obj)));
+			var objToNode = allObjs.ToDictionary( obj => obj, obj => getNode( obj) );
 
-			// convert graph dictionary
-			return objGraph.ToDictionary(pair => objToNode[pair.Key], pair => new HashSet<SceneObjectNode>(pair.Value.Select(obj => objToNode[obj])));
+            // convert from Object to SceneObjectNode and flip the edge direction
+            return referencedObjects.ToDictionary( 
+                x => objToNode[ x ], 
+                x => objGraph
+                    .Where( pair => pair.Value.Contains( x ) )
+                    .Select( pair => objToNode[ pair.Key ] )
+                    .ToHashSet() 
+                ); 
 		}
 
-		// get an object label. for target objects, we add the scene's name. for prefabs we add a postfix.
-		static string GetSceneObjectNodeName(Object obj, HashSet<Object> targetObjs, string sceneName)
+        static ObjectNode GetSceneObjectNode(Object obj, HashSet<Object> targets, HashSet<Object> sceneObjects, string scenePath)
 		{
-			if (targetObjs.Contains(obj))
-				return obj.name + "\nscene " + sceneName;
+            string label = obj.name;
+            string tooltip = "";
+            bool isSceneObj = false;
+            Object[] objects;
 
-			if (IsPrefab(obj))//(obj == PrefabUtility.GetPrefabParent(obj))
-				return obj.name + "\n(Prefab)";
+            string sceneName = System.IO.Path.GetFileNameWithoutExtension( scenePath );
 
-			return obj.name;
+            var asCycleRep = obj as CycleRep;
+            if ( asCycleRep != null )
+            {
+                label = asCycleRep.name;
+                if ( targets.Intersect( asCycleRep.members ).Any() )
+                    label += "\nScene " + sceneName;
+                tooltip = !string.IsNullOrEmpty( label ) ? label : string.Join( "\n", asCycleRep.members.Select( m => m.name ).ToArray() );
+
+                // we consider rep as a scene Obj if all its members are scene objs
+                isSceneObj = !asCycleRep.members.Except( sceneObjects ).Any();
+                objects = asCycleRep.gameObject != null ? new[] { asCycleRep.gameObject } : asCycleRep.members.ToArray();
+            }
+            else
+            {
+                isSceneObj = sceneObjects.Contains( obj );
+                objects = new[] { obj };
+            }
+
+            if ( isSceneObj )
+                objects = new Object[] { }; // todo: get scene object
+
+            return new ObjectNode( label, tooltip, objects, isSceneObj );
 		}
 
 		// returns true if the object is a prefab

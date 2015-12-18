@@ -3,83 +3,79 @@ using System.Collections.Generic;
 using System.Linq;
 using RelationsInspector.Extensions;
 
-namespace RelationsInspector.Backend.AssetReferenceInspector
+namespace RelationsInspector.Backend.AssetDependency
 {
-	using ObjNodeGraph = Dictionary<SceneObjectNode, HashSet<SceneObjectNode>>;
+    using UnityEditor;
+    using ObjNodeGraph = Dictionary<ObjectNode, HashSet<ObjectNode>>;
 
-	[RelationsInspector(typeof(Object))]
-	class AssetReferenceBackend : MinimalBackend<SceneObjectNode, string>
+    [AcceptTargets(typeof( Object ) )]
+    class AssetReferenceBackend : MinimalBackend<ObjectNode, string>
 	{
-		static Color targetNodeColor = new Color(0.29f, 0.53f, 0.28f);
+		static Color sceneNodeColor = new Color(0.29f, 0.53f, 0.28f);
 
-		Object[] currentTargets;
-		
 		// linking objects to the ones they reference
 		ObjNodeGraph referenceGraph;
 
-		// nodes representing the target object. we want to mark them visually
-		HashSet<SceneObjectNode> targetNodes;
-
 		// root directory for scene asset search
 		string sceneDirPath = Application.dataPath;
-		
-		public override IEnumerable<SceneObjectNode> Init(IEnumerable<object> targets, RelationsInspectorAPI api)
+        string[] sceneFilePaths;
+        string searchString;
+
+        public override void Awake( RelationsInspectorAPI api )
+        {
+            // get all scene files
+            sceneFilePaths = System.IO.Directory.GetFiles( sceneDirPath, "*.unity", System.IO.SearchOption.AllDirectories );
+
+            referenceGraph = new ObjNodeGraph();
+            base.Awake( api );
+        }
+
+        public override IEnumerable<ObjectNode> Init(object target)
 		{
-			if (targets == null || !targets.Any())
-				yield break;
+            var targetObj = target as Object;
 
-			var targetObjs = new HashSet<Object>( BackendUtil.Convert<Object>(targets) );
-			if (!targetObjs.Any())
-				yield break;
+            var targets = new[] { targetObj }.ToHashSet();
 
-			currentTargets = targetObjs.ToArray();
+            var sceneGraphs = sceneFilePaths.Select( path => ObjectDependencyUtil.GetReferenceGraph(path, targets ) );
 
-			// get all scene files
-			var sceneFilePaths = System.IO.Directory.GetFiles(sceneDirPath, "*.unity", System.IO.SearchOption.AllDirectories);
+            // when all sceneGraphs are empty, add a dummy node to represent the target
+            if ( sceneGraphs.All( x => !x.Keys.Any() ) )
+            {
+                string targetNodeName = targetObj.name + "\n(unreferenced)";
+                var dummyNode = new ObjectNode( targetNodeName, targetNodeName, new[] { targetObj }, false );
+                var dummyGraph = new ObjNodeGraph();
+                dummyGraph[ dummyNode ] = new HashSet<ObjectNode>();
+                sceneGraphs = new[] { dummyGraph };
+            }
 
-			referenceGraph = new ObjNodeGraph();
-			foreach (var path in sceneFilePaths)
-			{
-				// get the reference graph
-				var graph = ObjectDependencyUtil.GetReferenceGraph(path, targetObjs);
+            foreach ( var g in sceneGraphs )
+                ObjectDependencyUtil.AddGraph( referenceGraph, g );
 
-				// merge it with the other scene's graphs
-				ObjectDependencyUtil.AddGraph<SceneObjectNode>(referenceGraph, graph);
-			}
+            return ObjectGraphUtil.GetRoots( referenceGraph );
+        }
 
-			// find the nodes being referenced
-			var referencedNodes = referenceGraph.Values.SelectMany(set=>set);
+		public override IEnumerable<Relation<ObjectNode, string>> GetRelations(ObjectNode entity)
+		{
+            if ( !referenceGraph.ContainsKey( entity ) )
+                yield break;
 
-			// find the target nodes. they are ones not referencing anything
-			targetNodes = new HashSet<SceneObjectNode>( referencedNodes.Except(referenceGraph.Keys) );
-
-			// find the scene root nodes in the graph
-			var rootNodes = referenceGraph.Keys.Except(referencedNodes);
-			foreach (var rootNode in rootNodes)
-				yield return rootNode;
+            foreach ( var node in referenceGraph[ entity ] )
+                yield return new Relation<ObjectNode, string>( entity, node, string.Empty );
 		}
 
-		public override IEnumerable<SceneObjectNode> GetRelatedEntities(SceneObjectNode entity)
-		{
-			if (referenceGraph.ContainsKey(entity))
-				return referenceGraph[entity];
-
-			return Enumerable.Empty<SceneObjectNode>();
-		}
-
-		public override GUIContent GetContent(SceneObjectNode entity)
+		public override GUIContent GetContent(ObjectNode entity)
 		{
 			return new GUIContent(entity.label, entity.label);
 		}
 
 		// draw nodes representing scene root GameObject in a special color
-		public override Rect DrawContent(SceneObjectNode entity, EntityDrawContext drawContext)
+		public override Rect DrawContent(ObjectNode entity, EntityDrawContext drawContext)
 		{
-			if (!targetNodes.Contains(entity))
-				return DrawUtil.DrawContent(GetContent(entity), drawContext);
-
+            if ( !entity.IsSceneObject )
+                return DrawUtil.DrawContent(GetContent(entity), drawContext);
+            
 			var colorBackup = drawContext.style.backgroundColor;
-			drawContext.style.backgroundColor = targetNodeColor;
+			drawContext.style.backgroundColor = sceneNodeColor;
 			var rect = DrawUtil.DrawContent(GetContent(entity), drawContext);
 			drawContext.style.backgroundColor = colorBackup;
 			return rect;
@@ -87,7 +83,24 @@ namespace RelationsInspector.Backend.AssetReferenceInspector
 
 		public override Rect OnGUI()
 		{
+            GUILayout.BeginHorizontal( EditorStyles.toolbar );
+            GUILayout.FlexibleSpace();
+            searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
+            GUILayout.EndHorizontal();
 			return BackendUtil.GetMaxRect();
 		}
-	}
+
+        public override string GetEntityTooltip( ObjectNode entity )
+        {
+            return entity.tooltip;
+        }
+
+        public override void OnEntitySelectionChange( ObjectNode[] selection )
+        {
+            var single = selection.SingleOrDefault();
+            if ( single != null && single.objs.Count() == 1 )
+                Selection.activeObject = single.objs.First();
+        }
+
+    }
 }
