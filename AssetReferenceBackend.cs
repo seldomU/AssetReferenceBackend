@@ -21,13 +21,13 @@ namespace RelationsInspector.Backend.AssetDependency
         string[] sceneFilePaths;
         string searchString;
 
-        public override void Awake( RelationsInspectorAPI api )
+        public override void Awake( GetAPI getAPI )
         {
             // get all scene files
             sceneFilePaths = System.IO.Directory.GetFiles( sceneDirPath, "*.unity", System.IO.SearchOption.AllDirectories );
 
             referenceGraph = new ObjNodeGraph();
-            base.Awake( api );
+            base.Awake( getAPI );
         }
 
         public override IEnumerable<ObjectNode> Init(object target)

@@ -13,10 +13,10 @@ namespace RelationsInspector.Backend.AssetDependency
         ObjMap graph;
         string searchString;
 
-        public override void Awake( RelationsInspectorAPI api )
+        public override void Awake( GetAPI getAPI )
         {
             graph = new ObjMap();
-            base.Awake( api );
+            base.Awake( getAPI );
         }
 
         public override IEnumerable<Object> Init( object target )
