@@ -6,114 +6,114 @@ using RelationsInspector.Extensions;
 
 namespace RelationsInspector.Backend.AssetDependency
 {
-    using ObjMap = Dictionary<Object, HashSet<Object>>;
-    using ObjNodeGraph = Dictionary<ObjectNode, HashSet<ObjectNode>>;
+	using ObjMap = Dictionary<Object, HashSet<Object>>;
+	using ObjNodeGraph = Dictionary<ObjectNode, HashSet<ObjectNode>>;
 
-    public static class ObjectDependencyUtil
+	public static class ObjectDependencyUtil
 	{
-		public static ObjNodeGraph GetReferenceGraph(string sceneFilePath, HashSet<Object> targets)
+		public static ObjNodeGraph GetReferenceGraph( string sceneFilePath, HashSet<Object> targets )
 		{
 			// get the scene's objects
 			var sceneObjects = UnityEditorInternal
-                .InternalEditorUtility
-                .LoadSerializedFileAndForget(sceneFilePath)
-                .ToHashSet();
+				.InternalEditorUtility
+				.LoadSerializedFileAndForget( sceneFilePath )
+				.ToHashSet();
 
 			// get the root gameObjects
 			var rootGOs = sceneObjects
-                .OfType<GameObject>()
-                .Where(go => go.transform.parent == null);
+				.OfType<GameObject>()
+				.Where( go => go.transform.parent == null );
 
 			// build the Object graph
 			var objGraph = new ObjMap();
-            var targetArray = targets.ToArray();
-            foreach ( var rootGO in rootGOs )
-            {
-                var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( rootGO, targetArray );
-                objGraph = ObjectGraphUtil.MergeGraphs( objGraph, rootGOgraph );
-            }
+			var targetArray = targets.ToArray();
+			foreach ( var rootGO in rootGOs )
+			{
+				var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( rootGO, targetArray );
+				objGraph = ObjectGraphUtil.MergeGraphs( objGraph, rootGOgraph );
+			}
 
 			// convert it to a SceneObjectNode graph, so we can destroy the objects
-			string fileName = System.IO.Path.GetFileName(sceneFilePath);
-			var nodeGraph = ObjectGraphToObjectNodeGraph(objGraph, obj => GetSceneObjectNode( obj, targets, sceneObjects, sceneFilePath ) );
+			string fileName = System.IO.Path.GetFileName( sceneFilePath );
+			var nodeGraph = ObjectGraphToObjectNodeGraph( objGraph, obj => GetSceneObjectNode( obj, targets, sceneObjects, sceneFilePath ) );
 
-            // destroy the scene Objects
-            var sceneObjArray = sceneObjects.ToArray();
-			for (int i = 0; i < sceneObjArray.Length; i++)
-				Object.DestroyImmediate(sceneObjArray[i]);
+			// destroy the scene Objects
+			var sceneObjArray = sceneObjects.ToArray();
+			for ( int i = 0; i < sceneObjArray.Length; i++ )
+				Object.DestroyImmediate( sceneObjArray[ i ] );
 
 			return nodeGraph;
 		}
 
-        // turn object graph into VisualNode graph (mapping obj -> name)
-        static ObjNodeGraph ObjectGraphToObjectNodeGraph(ObjMap objGraph, System.Func<Object, ObjectNode> getNode)
+		// turn object graph into VisualNode graph (mapping obj -> name)
+		static ObjNodeGraph ObjectGraphToObjectNodeGraph( ObjMap objGraph, System.Func<Object, ObjectNode> getNode )
 		{
-            var referencedObjects = objGraph.Values.SelectMany( o => o ).ToHashSet();
+			var referencedObjects = objGraph.Values.SelectMany( o => o ).ToHashSet();
 
-            // get all graph objects
-            var allObjs = objGraph.Keys.Concat( referencedObjects ).ToHashSet();
+			// get all graph objects
+			var allObjs = objGraph.Keys.Concat( referencedObjects ).ToHashSet();
 
 			// map them to VisualNodes
-			var objToNode = allObjs.ToDictionary( obj => obj, obj => getNode( obj) );
+			var objToNode = allObjs.ToDictionary( obj => obj, obj => getNode( obj ) );
 
-            // convert from Object to SceneObjectNode and flip the edge direction
-            return referencedObjects.ToDictionary( 
-                x => objToNode[ x ], 
-                x => objGraph
-                    .Where( pair => pair.Value.Contains( x ) )
-                    .Select( pair => objToNode[ pair.Key ] )
-                    .ToHashSet() 
-                ); 
+			// convert from Object to SceneObjectNode and flip the edge direction
+			return referencedObjects.ToDictionary(
+				x => objToNode[ x ],
+				x => objGraph
+					.Where( pair => pair.Value.Contains( x ) )
+					.Select( pair => objToNode[ pair.Key ] )
+					.ToHashSet()
+				);
 		}
 
-        static ObjectNode GetSceneObjectNode(Object obj, HashSet<Object> targets, HashSet<Object> sceneObjects, string scenePath)
+		static ObjectNode GetSceneObjectNode( Object obj, HashSet<Object> targets, HashSet<Object> sceneObjects, string scenePath )
 		{
-            string label = obj.name;
-            string tooltip = "";
-            bool isSceneObj = false;
-            Object[] objects;
+			string label = obj.name;
+			string tooltip = "";
+			bool isSceneObj = false;
+			Object[] objects;
 
-            string sceneName = System.IO.Path.GetFileNameWithoutExtension( scenePath );
+			string sceneName = System.IO.Path.GetFileNameWithoutExtension( scenePath );
 
-            var asCycleRep = obj as CycleRep;
-            if ( asCycleRep != null )
-            {
-                label = asCycleRep.name;
-                if ( targets.Intersect( asCycleRep.members ).Any() )
-                    label += "\nScene " + sceneName;
-                tooltip = !string.IsNullOrEmpty( label ) ? label : string.Join( "\n", asCycleRep.members.Select( m => m.name ).ToArray() );
+			var asCycleRep = obj as CycleRep;
+			if ( asCycleRep != null )
+			{
+				label = asCycleRep.name;
+				if ( targets.Intersect( asCycleRep.members ).Any() )
+					label += "\nScene " + sceneName;
+				tooltip = !string.IsNullOrEmpty( label ) ? label : string.Join( "\n", asCycleRep.members.Select( m => m.name ).ToArray() );
 
-                // we consider rep as a scene Obj if all its members are scene objs
-                isSceneObj = !asCycleRep.members.Except( sceneObjects ).Any();
-                objects = asCycleRep.gameObject != null ? new[] { asCycleRep.gameObject } : asCycleRep.members.ToArray();
-            }
-            else
-            {
-                isSceneObj = sceneObjects.Contains( obj );
-                objects = new[] { obj };
-            }
+				// we consider rep as a scene Obj if all its members are scene objs
+				isSceneObj = !asCycleRep.members.Except( sceneObjects ).Any();
+				objects = asCycleRep.gameObject != null ? new[] { asCycleRep.gameObject } : asCycleRep.members.ToArray();
+			}
+			else
+			{
+				isSceneObj = sceneObjects.Contains( obj );
+				objects = new[] { obj };
+			}
 
-            if ( isSceneObj )
-                objects = new Object[] { }; // todo: get scene object
+			if ( isSceneObj )
+				objects = new Object[] { }; // todo: get scene object
 
-            return new ObjectNode( label, tooltip, objects, isSceneObj );
+			return new ObjectNode( label, tooltip, objects, isSceneObj );
 		}
 
 		// returns true if the object is a prefab
-		static bool IsPrefab(Object obj)
+		static bool IsPrefab( Object obj )
 		{
-			return PrefabUtility.GetPrefabParent(obj) == null && PrefabUtility.GetPrefabObject(obj) != null;
+			return PrefabUtility.GetPrefabParent( obj ) == null && PrefabUtility.GetPrefabObject( obj ) != null;
 		}
 
 		// merge two graphs
-		public static void AddGraph<T>(Dictionary<T, HashSet<T>> graph, Dictionary<T, HashSet<T>> addedGraph) where T : class
+		public static void AddGraph<T>( Dictionary<T, HashSet<T>> graph, Dictionary<T, HashSet<T>> addedGraph ) where T : class
 		{
-			foreach (var pair in addedGraph)
+			foreach ( var pair in addedGraph )
 			{
-				if (!graph.ContainsKey(pair.Key))
-					graph[pair.Key] = pair.Value;
+				if ( !graph.ContainsKey( pair.Key ) )
+					graph[ pair.Key ] = pair.Value;
 				else
-					graph[pair.Key].UnionWith(pair.Value);
+					graph[ pair.Key ].UnionWith( pair.Value );
 			}
 		}
 	}
