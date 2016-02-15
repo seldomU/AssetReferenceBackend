@@ -89,6 +89,10 @@ namespace RelationsInspector.Backend.AssetDependency
 			}
 			else
 			{
+				// add scene name. if label has content, put the scene name in a new line
+				if ( targets.Contains( obj ) )
+					label += ((label == "") ? "" : "\n") + "Scene " + sceneName;
+
 				isSceneObj = sceneObjects.Contains( obj );
 				objects = new[] { obj };
 			}
