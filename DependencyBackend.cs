@@ -15,6 +15,9 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public override void Awake( GetAPI getAPI )
 		{
+			EditorApplication.SaveCurrentSceneIfUserWantsTo();
+			EditorApplication.NewScene();
+
 			graph = new ObjMap();
 			base.Awake( getAPI );
 		}
@@ -24,6 +27,8 @@ namespace RelationsInspector.Backend.AssetDependency
 			var targetObj = target as Object;
 			var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( targetObj, new Object[ 0 ] );
 			graph = ObjectGraphUtil.MergeGraphs( graph, rootGOgraph );
+
+			System.GC.Collect();
 
 			// targets have probably been substituted by cycleReps in the graph, so just use all parent-less nodes as seeds
 			return ObjectGraphUtil.GetRoots( rootGOgraph );

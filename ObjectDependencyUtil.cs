@@ -41,6 +41,7 @@ namespace RelationsInspector.Backend.AssetDependency
 			var sceneObjArray = sceneObjects.ToArray();
 			for ( int i = 0; i < sceneObjArray.Length; i++ )
 				Object.DestroyImmediate( sceneObjArray[ i ] );
+			System.GC.Collect();
 
 			return nodeGraph;
 		}

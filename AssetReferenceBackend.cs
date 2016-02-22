@@ -23,6 +23,9 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public override void Awake( GetAPI getAPI )
 		{
+			EditorApplication.SaveCurrentSceneIfUserWantsTo();
+			EditorApplication.NewScene();
+
 			// get all scene files
 			sceneFilePaths = System.IO.Directory.GetFiles( sceneDirPath, "*.unity", System.IO.SearchOption.AllDirectories );
 
@@ -51,6 +54,7 @@ namespace RelationsInspector.Backend.AssetDependency
 			foreach ( var g in sceneGraphs )
 				ObjectDependencyUtil.AddGraph( referenceGraph, g );
 
+			System.GC.Collect();
 			return ObjectGraphUtil.GetRoots( referenceGraph );
 		}
 
