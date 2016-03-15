@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
 using RelationsInspector.Extensions;
@@ -37,30 +38,14 @@ namespace RelationsInspector.Backend.AssetDependency
 				cycleFree[ graphRoot ] = notSoMuchRoots.ToHashSet();
 			}
 
-			var openNodes = cycleFree.Keys.ToHashSet();
-			var toExpand = new Queue<Object>( new[] { graphRoot } );
-
-			while ( toExpand.Any() )
-			{
-				var item = toExpand.Dequeue();
-				openNodes.Remove( item );
-
-				var successors = new HashSet<Object>();
-
-				foreach ( var candidate in cycleFree[ item ].Except( new[] { item } ) )
-				{
-					var testSets = openNodes.Except( new[] { candidate } );
-					if ( testSets.Any( x => cycleFree[ x ].Contains( candidate ) ) )
-						continue;
-
-					successors.Add( candidate );
-				}
-
-				graph[ item ] = successors;
-				toExpand.Enqueue( successors );
-			}
-
-			return graph;
+			// structure the dependencies
+			return cycleFree.ToDictionary
+				(
+				pair => pair.Key,
+				pair => pair.Value
+					.Where( obj => obj != pair.Key && pair.Value.Except(new[] { obj }).Any(sibling=> cycleFree[ sibling].Contains( obj ) ) == false )
+					.ToHashSet()
+				);
 		}
 
 		public static ObjMap GetCycleFreeDependencies( Object root, Object[] targets )
@@ -69,53 +54,38 @@ namespace RelationsInspector.Backend.AssetDependency
 			// replace cycles by a single objects
 			// connectedDeps -> cycleFree
 
+			// group the map keys by value. 
+			// that will create one group for each dependency-cycle, containing all its members
+			var cycleGrouped = connectedDeps.Keys.GroupBy( key => connectedDeps[ key ], new SetComparer() );
 
-			var untested = connectedDeps.Keys.ToHashSet();
-			var replacement = new Dictionary<Object, Object>();
-			var replaceMap = new ObjMap();
+			// create a representative object for each group and map it to the group members
+			var repToMembers = cycleGrouped
+				.Where( group => group.Count() > 1 )
+				.ToDictionary( group => (Object)CycleRep.Create( group ), group => group.ToHashSet() );
 
-			while ( untested.Any() )
+			// map all keys to their representative
+			var objToRep = new Dictionary<Object, Object>();
+			foreach ( var pair in repToMembers )
 			{
-				var currentKey = untested.First();
-				var currentValue = connectedDeps[ currentKey ];
-				untested.Remove( currentKey );
-
-				var identicals = untested
-					.Where( x => connectedDeps[ x ].SetEquals( currentValue ) )
-					.ToArray();
-
-				if ( identicals.Any() )
-				{
-					var cycleMembers = identicals.Concat( new[] { currentKey } );
-					var rep = CycleRep.Create( cycleMembers );
-					replaceMap[ rep ] = currentValue.Except( cycleMembers ).ToHashSet();
-
-					foreach ( var x in cycleMembers )
-						replacement[ x ] = rep;
-
-					foreach ( var x in identicals )
-						untested.Remove( x );
-				}
+				foreach ( var obj in pair.Value )
+					objToRep[ obj ] = pair.Key;
 			}
 
-			System.Func<Object, Object> substitute = x => replacement.ContainsKey( x ) ? replacement[ x ] : x;
+			System.Func<Object, Object> newObj = ( obj ) => objToRep.ContainsKey( obj ) ? objToRep[ obj ] : obj;
 
-			var cycleFreeObjs = connectedDeps
-				.Keys
-				.Select( substitute )
-				.ToHashSet();  // remove duplicates
-
-			return cycleFreeObjs.ToDictionary(
-				x => x,
-				x => connectedDeps.ContainsKey( x ) ?
-					connectedDeps[ x ].Select( substitute ).ToHashSet() :
-					replaceMap[ x ].Select( substitute ).ToHashSet() );
+			return cycleGrouped.ToDictionary
+				( 
+				group => newObj( group.First() ), 
+				group => connectedDeps[ group.First() ]
+					.Select( newObj )
+					.Except( new[] { newObj( group.First() ) } )
+					.ToHashSet() 
+				);
 		}
 
 		public static ObjMap GetConnectedDependencies( Object root, Object[] targets )
 		{
 			var allDeps = GetAllDependencies( root );
-
 			if ( !targets.Any() )
 				return allDeps;
 
@@ -138,19 +108,45 @@ namespace RelationsInspector.Backend.AssetDependency
 		public static ObjMap GetAllDependencies( Object root )
 		{
 			// get all objects that root depends on
-			var allRootDeps = GetDependencies( root );
+			var rootDeps = GetDependencies( root );
 
-			// get all of their dependencies
-			return allRootDeps.ToDictionary( obj => obj, obj => GetDependencies( obj ) );
+			return rootDeps.ToDictionary( obj => obj, obj => GetDependencies( obj ).ToHashSet() );
 		}
 
 		// returns all objects that obj references, plus itself
-		static HashSet<Object> GetDependencies( Object obj )
+		static IEnumerable<Object> GetDependencies( Object obj )
 		{
-			return UnityEditor
-				.EditorUtility
-				.CollectDependencies( new[] { obj } )
-				.ToHashSet();
+			var assetGroups = EditorUtility.CollectDependencies( new[] { obj } )
+				.Select( o => new { obj = o, path = AssetDatabase.GetAssetPath( o ) } )
+				.Where( pair => !IgnoreDependencyFrom( pair.path ) )
+				.GroupBy( pair => pair.path );
+
+			foreach ( var group in assetGroups )
+			{
+				if ( string.IsNullOrEmpty( group.Key ) )
+				{
+					foreach ( var pair in group )
+					{
+						yield return pair.obj;
+					}
+				}
+				else if ( group.Count() == 1 )
+				{
+					yield return group.First().obj;
+				}
+				else
+				{
+					yield return AssetDatabase.LoadAssetAtPath( group.Key, typeof( Object ) );
+				}
+			}
+		}
+
+		static bool IgnoreDependencyFrom( string path )
+		{
+			return
+				path.StartsWith( "Library" ) ||
+				path.StartsWith( "Resources/unity_builtin_extra" ) ||
+				path.EndsWith( "dll" );
 		}
 
 		// merges graphs a and b. treat cycleRep objects with equal members as identical
@@ -193,7 +189,12 @@ namespace RelationsInspector.Backend.AssetDependency
 		public static IEnumerable<T> GetRoots<T>( Dictionary<T, HashSet<T>> map )
 		{
 			// return the nodes that are not referenced by any node (keys that are not values)
-			return map.Keys.Where( k => !map.Values.Any( v => v.Contains( k ) ) );
+			return map.Keys.Where( k => !map.Values.Except(new[] { map[k] } ).Any( v => v.Contains( k ) ) );
+		}
+
+		public static IEnumerable<T> GetAllNodes<T>( Dictionary<T, HashSet<T>> map )
+		{
+			return map.Values.SelectMany( o => o ).ToHashSet().Union( map.Keys );
 		}
 	}
 }

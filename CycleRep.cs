@@ -14,6 +14,7 @@ namespace RelationsInspector.Backend.AssetDependency
 		public static CycleRep Create( IEnumerable<Object> members )
 		{
 			var instance = CreateInstance<CycleRep>();
+			instance.hideFlags = HideFlags.HideAndDontSave;
 			instance.members = members.ToHashSet();
 			instance.gameObject = instance.GetGameObject();
 			instance.name = instance.gameObject == null ? "Cycle Rep" : instance.gameObject.name;
@@ -22,7 +23,7 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public override string ToString()
 		{
-			return members.ToDelimitedString();
+			return "rep named {" + name + "} members: " +  members.ToDelimitedString();
 		}
 
 		public bool EqualMembers( CycleRep other )
@@ -34,10 +35,11 @@ namespace RelationsInspector.Backend.AssetDependency
 		// that is: if one member is a gameobject, and all others are components of it
 		private GameObject GetGameObject()
 		{
-			var go = members.OfType<GameObject>().SingleOrDefault();
-			if ( go == null )
+			var gos = members.OfType<GameObject>();
+			if( gos.Count() != 1)
 				return null;
 
+			var go = gos.First();
 			foreach ( var obj in members.Except( new[] { go } ) )
 			{
 				var asComponent = obj as Component;

@@ -1,11 +1,11 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-using RelationsInspector.Extensions;
+using UnityEditor;
+
 
 namespace RelationsInspector.Backend.AssetDependency
 {
-	using UnityEditor;
 	using ObjMap = Dictionary<Object, HashSet<Object>>;
 
 	class DependencyBackend : MinimalBackend<Object, string>
@@ -15,9 +15,6 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public override void Awake( GetAPI getAPI )
 		{
-			EditorApplication.SaveCurrentSceneIfUserWantsTo();
-			EditorApplication.NewScene();
-
 			graph = new ObjMap();
 			base.Awake( getAPI );
 		}
@@ -25,7 +22,9 @@ namespace RelationsInspector.Backend.AssetDependency
 		public override IEnumerable<Object> Init( object target )
 		{
 			var targetObj = target as Object;
+			// generate the dependency graph for this target
 			var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( targetObj, new Object[ 0 ] );
+			// merge it with the existing graphs (of other targets)
 			graph = ObjectGraphUtil.MergeGraphs( graph, rootGOgraph );
 
 			System.GC.Collect();
@@ -73,16 +72,29 @@ namespace RelationsInspector.Backend.AssetDependency
 				 return asRep;
 			 };
 
-			UnityEditor.Selection.objects = selection.Select( substitute ).ToArray();
+			Selection.objects = selection.Select( substitute ).ToArray();
 		}
 
 		public override Rect OnGUI()
 		{
 			GUILayout.BeginHorizontal( EditorStyles.toolbar );
-			GUILayout.FlexibleSpace();
-			searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
+			{
+				GUILayout.FlexibleSpace();
+				searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
+			}
 			GUILayout.EndHorizontal();
 			return BackendUtil.GetMaxRect();
+		}
+
+		public override void OnDestroy()
+		{
+			if ( graph != null )
+			{
+				// destroy all cycleReps
+				var cycleReps = ObjectGraphUtil.GetAllNodes( graph ).OfType<CycleRep>().ToArray();
+				foreach ( var cycleRep in cycleReps )
+					Object.DestroyImmediate( cycleRep );
+			}
 		}
 	}
 }
