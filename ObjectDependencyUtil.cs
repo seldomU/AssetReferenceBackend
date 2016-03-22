@@ -46,6 +46,33 @@ namespace RelationsInspector.Backend.AssetDependency
 			return nodeGraph;
 		}
 
+		public static ObjNodeGraph GetActiveSceneReferenceGraph( HashSet<Object> targets )
+		{
+			var rootGameObjects = ActiveSceneRootGameObjects();
+
+			// build the Object graph
+			var objGraph = new ObjMap();
+			var targetArray = targets.ToArray();
+			foreach ( var rootGO in rootGameObjects )
+			{
+				var rootGOgraph = ObjectGraphUtil.GetDependencyGraph( rootGO, targetArray );
+				objGraph = ObjectGraphUtil.MergeGraphs( objGraph, rootGOgraph );
+			}
+
+			// convert it to a SceneObjectNode graph, so we can destroy the objects
+			return ObjectGraphToObjectNodeGraph( objGraph, obj => GetActiveSceneObjectNode( obj, targets ) );
+		}
+
+		public static IEnumerable<GameObject> ActiveSceneRootGameObjects()
+		{
+			var prop = new HierarchyProperty( HierarchyType.GameObjects );
+			var expanded = new int[ 0 ];
+			while ( prop.Next( expanded ) )
+			{
+				yield return prop.pptrValue as GameObject;
+			}
+		}
+
 		// turn object graph into VisualNode graph (mapping obj -> name)
 		static ObjNodeGraph ObjectGraphToObjectNodeGraph( ObjMap objGraph, System.Func<Object, ObjectNode> getNode )
 		{
@@ -65,6 +92,50 @@ namespace RelationsInspector.Backend.AssetDependency
 					.Select( pair => objToNode[ pair.Key ] )
 					.ToHashSet()
 				);
+		}
+
+		static ObjectNode GetActiveSceneObjectNode( Object obj, HashSet<Object> targets )
+		{
+			string label = obj.name;
+			string tooltip = "";
+			bool isSceneObj = false;
+			Object[] objects;
+
+			string sceneName = EditorApplication.currentScene.Split( '/' ).Last();
+
+			var asCycleRep = obj as CycleRep;
+			if ( asCycleRep != null )
+			{
+				label = asCycleRep.name;
+				if ( targets.Intersect( asCycleRep.members ).Any() )
+					label += "\nScene " + sceneName;
+				tooltip = !string.IsNullOrEmpty( label ) ? label : string.Join( "\n", asCycleRep.members.Select( m => m.name ).ToArray() );
+
+				// we consider rep as a scene Obj if all its members are scene objs
+				isSceneObj = asCycleRep.members.All( m => IsSceneObject( m ) );
+				objects = asCycleRep.gameObject != null ? new[] { asCycleRep.gameObject } : asCycleRep.members.ToArray();
+			}
+			else
+			{
+				// add scene name. if label has content, put the scene name in a new line
+				if ( targets.Contains( obj ) )
+					label += ( ( label == "" ) ? "" : "\n" ) + "Scene " + sceneName;
+
+				isSceneObj = IsSceneObject( obj );
+				objects = new[] { obj };
+			}
+
+			if ( isSceneObj )
+				objects = new Object[] { }; // todo: get scene object
+
+			return new ObjectNode( label, tooltip, objects, isSceneObj );
+		}
+
+		// return true if obj is part of a scene
+		static bool IsSceneObject( Object obj )
+		{
+			// scene objects have no asset path
+			return string.IsNullOrEmpty( AssetDatabase.GetAssetPath( obj ) );
 		}
 
 		static ObjectNode GetSceneObjectNode( Object obj, HashSet<Object> targets, HashSet<Object> sceneObjects, string scenePath )

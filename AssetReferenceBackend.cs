@@ -13,6 +13,7 @@ namespace RelationsInspector.Backend.AssetDependency
 	{
 		static Color sceneNodeColor = new Color( 0.29f, 0.53f, 0.28f );
 
+
 		// linking objects to the ones they reference
 		ObjNodeGraph referenceGraph;
 
@@ -23,12 +24,6 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public override void Awake( GetAPI getAPI )
 		{
-			EditorApplication.SaveCurrentSceneIfUserWantsTo();
-			EditorApplication.NewScene();
-
-			// get all scene files
-			sceneFilePaths = System.IO.Directory.GetFiles( sceneDirPath, "*.unity", System.IO.SearchOption.AllDirectories );
-
 			referenceGraph = new ObjNodeGraph();
 			base.Awake( getAPI );
 		}
@@ -39,7 +34,9 @@ namespace RelationsInspector.Backend.AssetDependency
 
 			var targets = new[] { targetObj }.ToHashSet();
 
-			var sceneGraphs = sceneFilePaths.Select( path => ObjectDependencyUtil.GetReferenceGraph( path, targets ) );
+			//var sceneGraphs = sceneFilePaths.Select( path => ObjectDependencyUtil.GetReferenceGraph( path, targets ) );
+
+			var sceneGraphs = new[] { ObjectDependencyUtil.GetActiveSceneReferenceGraph( targets ) };
 
 			// when all sceneGraphs are empty, add a dummy node to represent the target
 			if ( sceneGraphs.All( x => !x.Keys.Any() ) )
