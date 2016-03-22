@@ -65,12 +65,26 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public static IEnumerable<GameObject> ActiveSceneRootGameObjects()
 		{
+#if UNITY_5_3
+			return UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+#else
 			var prop = new HierarchyProperty( HierarchyType.GameObjects );
 			var expanded = new int[ 0 ];
 			while ( prop.Next( expanded ) )
 			{
 				yield return prop.pptrValue as GameObject;
 			}
+#endif
+		}
+
+		public static string GetActiveSceneName( bool excludePath = true )
+		{
+#if UNITY_5_3
+			string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+#else
+			string sceneName = EditorApplication.currentScene;
+#endif
+			return excludePath ? sceneName.Split( '/' ).Last() : sceneName;
 		}
 
 		// turn object graph into VisualNode graph (mapping obj -> name)
@@ -101,7 +115,7 @@ namespace RelationsInspector.Backend.AssetDependency
 			bool isSceneObj = false;
 			Object[] objects;
 
-			string sceneName = EditorApplication.currentScene.Split( '/' ).Last();
+			string sceneName = GetActiveSceneName();
 
 			var asCycleRep = obj as CycleRep;
 			if ( asCycleRep != null )
