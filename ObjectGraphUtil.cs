@@ -188,7 +188,7 @@ namespace RelationsInspector.Backend.AssetDependency
 
 		public static IEnumerable<T> GetRoots<T>( Dictionary<T, HashSet<T>> map )
 		{
-			// return the nodes that are not referenced by any node (keys that are not values)
+			// return the nodes that are not referenced by any node other than themselves
 			return map.Keys.Where( k => !map.Values.Except(new[] { map[k] } ).Any( v => v.Contains( k ) ) );
 		}
 
