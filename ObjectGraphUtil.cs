@@ -118,7 +118,7 @@ namespace RelationsInspector.Backend.AssetDependency
 		{
 			var assetGroups = EditorUtility.CollectDependencies( new[] { obj } )
 				.Select( o => new { obj = o, path = AssetDatabase.GetAssetPath( o ) } )
-				.Where( pair => !IgnoreDependencyFrom( pair.path ) )
+				.Where( pair => !IgnoreDependencyFromPath( pair.path ) && !( pair.obj is Component ) )
 				.GroupBy( pair => pair.path );
 
 			foreach ( var group in assetGroups )
@@ -141,7 +141,7 @@ namespace RelationsInspector.Backend.AssetDependency
 			}
 		}
 
-		static bool IgnoreDependencyFrom( string path )
+		static bool IgnoreDependencyFromPath( string path )
 		{
 			return
 				path.StartsWith( "Library" ) ||
