@@ -139,9 +139,6 @@ namespace RelationsInspector.Backend.AssetDependency
 				objects = new[] { obj };
 			}
 
-			if ( isSceneObj )
-				objects = new Object[] { }; // todo: get scene object
-
 			return new ObjectNode( label, tooltip, objects, isSceneObj );
 		}
 
