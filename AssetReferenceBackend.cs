@@ -12,7 +12,7 @@ namespace RelationsInspector.Backend.AssetDependency
 	class AssetReferenceBackend : MinimalBackend<ObjectNode, string>
 	{
 		static Color sceneNodeColor = new Color( 0.29f, 0.53f, 0.28f );
-
+		static bool showLegend;
 
 		// linking objects to the ones they reference
 		ObjNodeGraph referenceGraph;
@@ -85,9 +85,30 @@ namespace RelationsInspector.Backend.AssetDependency
 		public override Rect OnGUI()
 		{
 			GUILayout.BeginHorizontal( EditorStyles.toolbar );
-			GUILayout.FlexibleSpace();
-			searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
+			{
+				GUILayout.FlexibleSpace();
+
+				searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
+
+				showLegend = GUILayout.Toggle( showLegend, "Legend", EditorStyles.toolbarButton, GUILayout.ExpandWidth( false ) );
+				if ( showLegend )
+				{
+					string title = "Node colors";
+					var colorLegend = new ColorLegendEntry[]
+					{
+						new ColorLegendEntry() { text = "Target Object", color = api.GetSkin().entityWidget.targetBackgroundColor },
+						new ColorLegendEntry() { text = "Asset", color = api.GetSkin().entityWidget.backgroundColor },
+						new ColorLegendEntry() { text = "Scene Object", color = sceneNodeColor }
+					};
+
+					var boxSize = ColorLegendBox.GetSize( title, colorLegend );
+					float boxPosX = EditorGUIUtility.currentViewWidth - boxSize.x - 10;
+					float boxPosY = 42;
+					ColorLegendBox.Draw( new Rect( boxPosX, boxPosY, boxSize.x, boxSize.y ), title, colorLegend );
+				}
+			}
 			GUILayout.EndHorizontal();
+
 			return BackendUtil.GetMaxRect();
 		}
 
