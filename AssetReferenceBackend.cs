@@ -8,6 +8,10 @@ namespace RelationsInspector.Backend.AssetDependency
 	using UnityEditor;
 	using ObjNodeGraph = Dictionary<ObjectNode, HashSet<ObjectNode>>;
 
+	[Title("Asset references")]
+	[Version("1.0.0")]
+	[Description("Shows the chains of references between an asset and the scene objects that depend on it.")]
+	[Documentation( @"https://seldomu.github.io/riBackends/AssetReferenceBackend/" )]
 	[AcceptTargets( typeof( Object ) )]
 	class AssetReferenceBackend : MinimalBackend<ObjectNode, string>
 	{

@@ -8,6 +8,10 @@ namespace RelationsInspector.Backend.AssetDependency
 {
 	using ObjMap = Dictionary<Object, HashSet<Object>>;
 
+	[Title( "Object dependencies" )]
+	[Version( "1.0.0" )]
+	[Description( "Shows all objects that a target object depends on, including the dependencies between those." )]
+	[Documentation( @"https://seldomu.github.io/riBackends/ObjectDependency/" )]
 	class DependencyBackend : MinimalBackend<Object, string>
 	{
 		ObjMap graph;
