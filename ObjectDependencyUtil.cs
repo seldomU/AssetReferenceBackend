@@ -34,7 +34,6 @@ namespace RelationsInspector.Backend.AssetDependency
 			}
 
 			// convert it to a SceneObjectNode graph, so we can destroy the objects
-			string fileName = System.IO.Path.GetFileName( sceneFilePath );
 			var nodeGraph = ObjectGraphToObjectNodeGraph( objGraph, obj => GetSceneObjectNode( obj, targets, sceneObjects, sceneFilePath ) );
 
 			// destroy the scene Objects

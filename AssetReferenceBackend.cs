@@ -21,11 +21,6 @@ namespace RelationsInspector.Backend.AssetDependency
 		// linking objects to the ones they reference
 		ObjNodeGraph referenceGraph;
 
-		// root directory for scene asset search
-		string sceneDirPath = Application.dataPath;
-		string[] sceneFilePaths;
-		string searchString;
-
 		public override void Awake( GetAPI getAPI )
 		{
 			referenceGraph = new ObjNodeGraph();
@@ -91,8 +86,6 @@ namespace RelationsInspector.Backend.AssetDependency
 			GUILayout.BeginHorizontal( EditorStyles.toolbar );
 			{
 				GUILayout.FlexibleSpace();
-
-				searchString = BackendUtil.DrawEntitySelectSearchField( searchString, api );
 
 				showLegend = GUILayout.Toggle( showLegend, "Legend", EditorStyles.toolbarButton, GUILayout.ExpandWidth( false ) );
 				if ( showLegend )

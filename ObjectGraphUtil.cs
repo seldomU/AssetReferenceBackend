@@ -17,7 +17,6 @@ namespace RelationsInspector.Backend.AssetDependency
 				return new ObjMap();
 
 			// cycleFree -> graph
-			var graph = new ObjMap();
 			var graphRoot = cycleFree.ContainsKey( root )
 				?
 				root
